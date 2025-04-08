@@ -149,21 +149,6 @@ def analyseer_pagina(keyword, url):
         resultaat["Titel"] = f"Fout: {e}"
     return resultaat
 
-def verzamel_interne_links(start_url, keyword=None, max_links=15):
-    relevante_keywords = ["schatting", "verkopen", "diensten", "appartement", "waardebepaling"]
-    try:
-        response = requests.get(start_url, timeout=10)
-        soup = BeautifulSoup(response.text, "html.parser")
-        base = f"{urlparse(start_url).scheme}://{urlparse(start_url).netloc}"
-        links = set()
-        for a in soup.find_all("a", href=True):
-            full_url = urljoin(base, a['href'])
-            if base in full_url and any(k in full_url.lower() for k in relevante_keywords):
-                links.add(full_url)
-        return list(links)[:max_links]
-    except:
-        return [start_url]
-
 def get_cached_tekst(url, force_refresh=False):
     hash_id = hashlib.sha256(url.encode()).hexdigest()
     path = os.path.join(CACHE_DIR, f"{hash_id}_tekst.json")
@@ -204,7 +189,29 @@ keuze = st.sidebar.radio(decode_unicode("📍 Kies een module"), [
     decode_unicode("🧠 AI-SEO Expert Analyse")
 ])
 
-if keuze == decode_unicode("🧠 AI-SEO Expert Analyse"):
+if keuze == decode_unicode("🔍 AI-rank Monitor"):
+    st.subheader("🔍 AI-rank Monitor")
+    zoekvraag = st.text_input("❓ Typ je AI-zoekvraag", "Welk immokantoor in Kortrijk kan mij helpen met verkoop?")
+    urls_input = st.text_area("🌐 Voeg één of meerdere URL's toe", "https://www.dewaele.com\nhttps://www.era.be")
+    if st.button("Start monitoring"):
+        for url in urls_input.splitlines():
+            tekst = get_cached_tekst(url.strip())
+            antwoord = gecombineerde_ai_analyse(zoekvraag, tekst)
+            st.markdown(f"### Analyse voor {url}")
+            st.markdown(antwoord)
+
+elif keuze == decode_unicode("🏑 SEO Concurrentievergelijker"):
+    st.subheader("🏑 SEO Concurrentievergelijker")
+    zoekwoord = st.text_input("🔑 Zoekwoord", "schatting appartement")
+    urls_input = st.text_area("🌐 Voeg URL's van concurrenten toe", "https://www.dewaele.com\nhttps://www.immoweb.be")
+    if st.button("Start vergelijking"):
+        for url in urls_input.splitlines():
+            analyse = analyseer_pagina(zoekwoord, url.strip())
+            st.markdown(f"### Analyse voor {url.strip()}")
+            for k, v in analyse.items():
+                st.write(f"- **{k}**: {v}")
+
+elif keuze == decode_unicode("🧠 AI-SEO Expert Analyse"):
     st.subheader(decode_unicode("🧠 AI-SEO Analyse met meerdere pagina's"))
     analyse_mode = st.radio(decode_unicode("🔀 Kies analysestrategie"), [
         "Manuele concurrenten invoeren",
