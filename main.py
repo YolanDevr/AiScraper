@@ -3,7 +3,6 @@ import streamlit as st
 from googlesearch import search
 from collections import Counter
 import pandas as pd
-import matplotlib.pyplot as plt
 import requests
 from bs4 import BeautifulSoup
 import google.generativeai as genai
@@ -15,6 +14,7 @@ from PIL import Image
 import base64
 import urllib.request
 from io import BytesIO
+from urllib.parse import urljoin, urlparse
 from ai_context_seo import AI_SEO_GUIDE
 
 # 🔑 Gemini API-configuratie
@@ -51,7 +51,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 🌟 The Fat Lady branding
+# Branding
 logo_url = "https://thefatlady.be/wp-content/uploads/2021/12/logo.png"
 with urllib.request.urlopen(logo_url) as response:
     logo = Image.open(BytesIO(response.read()))
@@ -71,6 +71,9 @@ if "ai_historiek" not in st.session_state:
 
 CACHE_DIR = "ai_cache"
 os.makedirs(CACHE_DIR, exist_ok=True)
+
+def decode_unicode(string):
+    return string.encode('utf-16', 'surrogatepass').decode('utf-16')
 
 def cache_antwoord(prompt, tekst, modeltype, force_refresh=False):
     hash_input = prompt.strip() + tekst.strip() + modeltype
@@ -97,10 +100,10 @@ def cache_antwoord(prompt, tekst, modeltype, force_refresh=False):
         return antwoord
     except Exception as e:
         if "429" in str(e):
-            st.error("🚫 AI-quota overschreden. Bekijk [quota info](https://ai.google.dev/gemini-api/docs/rate-limits).")
-            return "⚠️ Quota bereikt – probeer later opnieuw."
+            st.error(decode_unicode("🚫 AI-quota overschreden. Bekijk [quota info](https://ai.google.dev/gemini-api/docs/rate-limits)."))
+            return decode_unicode("⚠️ Quota bereikt – probeer later opnieuw.")
         else:
-            return f"⚠️ AI-fout: {e}"
+            return decode_unicode(f"⚠️ AI-fout: {e}")
 
 def scrap_tekst_van_url(url):
     try:
@@ -109,19 +112,6 @@ def scrap_tekst_van_url(url):
         return soup.get_text(separator=" ", strip=True)
     except Exception as e:
         return f"[Fout bij ophalen]: {e}"
-
-def get_cached_tekst(url, force_refresh=False):
-    hash_id = hashlib.sha256(url.encode()).hexdigest()
-    path = os.path.join(CACHE_DIR, f"{hash_id}_tekst.json")
-
-    if not force_refresh and os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)["tekst"]
-
-    tekst = scrap_tekst_van_url(url)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump({"tekst": tekst}, f)
-    return tekst
 
 def analyseer_pagina(keyword, url):
     keyword = keyword.lower()
@@ -159,6 +149,34 @@ def analyseer_pagina(keyword, url):
         resultaat["Titel"] = f"Fout: {e}"
     return resultaat
 
+def verzamel_interne_links(start_url, keyword=None, max_links=15):
+    relevante_keywords = ["schatting", "verkopen", "diensten", "appartement", "waardebepaling"]
+    try:
+        response = requests.get(start_url, timeout=10)
+        soup = BeautifulSoup(response.text, "html.parser")
+        base = f"{urlparse(start_url).scheme}://{urlparse(start_url).netloc}"
+        links = set()
+        for a in soup.find_all("a", href=True):
+            full_url = urljoin(base, a['href'])
+            if base in full_url and any(k in full_url.lower() for k in relevante_keywords):
+                links.add(full_url)
+        return list(links)[:max_links]
+    except:
+        return [start_url]
+
+def get_cached_tekst(url, force_refresh=False):
+    hash_id = hashlib.sha256(url.encode()).hexdigest()
+    path = os.path.join(CACHE_DIR, f"{hash_id}_tekst.json")
+
+    if not force_refresh and os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)["tekst"]
+
+    tekst = scrap_tekst_van_url(url)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump({"tekst": tekst}, f)
+    return tekst
+
 def gecombineerde_ai_analyse(zoekvraag, tekst):
     prompt = f"""
 Analyseer onderstaande webtekst rond de zoekvraag: '{zoekvraag}'.
@@ -180,54 +198,36 @@ Analyseer onderstaande webtekst rond de zoekvraag: '{zoekvraag}'.
 """
     return cache_antwoord(prompt, tekst, modeltype="pro")
 
-# Interface
-keuze = st.sidebar.radio("📍 Kies een module", [
-    "🔍 AI-rank Monitor",
-    "🏑 SEO Concurrentievergelijker",
-    "🧠 AI-SEO Expert Analyse"
+keuze = st.sidebar.radio(decode_unicode("📍 Kies een module"), [
+    decode_unicode("🔍 AI-rank Monitor"),
+    decode_unicode("🏑 SEO Concurrentievergelijker"),
+    decode_unicode("🧠 AI-SEO Expert Analyse")
 ])
 
-if keuze == "🧠 AI-SEO Expert Analyse":
-    st.subheader("🧠 Één krachtige AI-SEO Analyse")
-    urls = st.text_area("🌐 Voer één of meerdere URL's in", "https://www.wittewoede.be/")
-    keyword = st.text_input("🔑 Zoekwoord", "kunstenaarsstatuut")
-    zoekvraag = st.text_input("❓ Typ een typische AI-zoekvraag", "Wat is het kunstenaarsstatuut?")
-    if st.button("🔍 Start analyse"):
-        urls = [u.strip() for u in urls.splitlines() if u.strip()]
-        analyses = []
+if keuze == decode_unicode("🧠 AI-SEO Expert Analyse"):
+    st.subheader(decode_unicode("🧠 AI-SEO Analyse met meerdere pagina's"))
+    analyse_mode = st.radio(decode_unicode("🔀 Kies analysestrategie"), [
+        "Manuele concurrenten invoeren",
+        "Starten vanaf 1 root URL met subpagina's"])
+
+    zoekvraag = st.text_input("❓ AI-zoekvraag", "Bij welk immokantoor regio Kortrijk kan ik terecht voor het schatten én voor de verkoop van mijn appartement?")
+    keyword = st.text_input("🔑 Zoekwoord", "schatting appartement kortrijk")
+
+    if analyse_mode == "Manuele concurrenten invoeren":
+        urls_input = st.text_area("🌐 Voer één of meerdere URL's in", "https://www.dewaele.com")
+        urls = [u.strip() for u in urls_input.splitlines() if u.strip()]
+    else:
+        root_url = st.text_input("🌍 Basis-URL", "https://www.dewaele.com")
+        max_pages = st.slider("📄 Aantal subpagina's om te analyseren", 1, 25, 5)
+        urls = verzamel_interne_links(root_url, keyword=keyword.split()[0], max_links=max_pages)
+        st.markdown("### 🔗 Geselecteerde subpagina’s")
+        for u in urls:
+            st.write(u)
+
+    if st.button(decode_unicode("🔍 Start analyse")):
         for url in urls:
             st.markdown(f"---\n## 🌐 Analyse van {url}")
             tekst = get_cached_tekst(url)
-            analyse = analyseer_pagina(keyword, url)
-            analyses.append(analyse)
-            st.markdown("### 📋 Basis SEO-analyse")
-            for k, v in analyse.items():
-                st.write(f"- **{k}**: {v}")
-
-            st.markdown("### 🧠 AI-analyse per onderdeel")
             antwoord = gecombineerde_ai_analyse(zoekvraag, tekst)
             st.markdown(antwoord)
-
-        if len(analyses) > 1:
-            st.markdown("## 📈 SEO-vergelijking (radar chart)")
-            def bereken_scores(pagina):
-                return {
-                    "Titel": 1 if pagina["Keyword in titel"] else 0,
-                    "Headings": 1 if pagina["Keyword in headings"] else 0,
-                    "Body": 1 if pagina["Keyword in body"] else 0,
-                    "Woorden": min(pagina["Aantal woorden"] / 500, 1)
-                }
-
-            labels = ["Titel", "Headings", "Body", "Woorden"]
-            angles = np.linspace(0, 2 * np.pi, len(labels), endpoint=False).tolist() + [0]
-            fig, ax = plt.subplots(figsize=(6, 6), subplot_kw=dict(polar=True))
-            for pagina in analyses:
-                scores = list(bereken_scores(pagina).values()) + [bereken_scores(pagina)["Titel"]]
-                ax.plot(angles, scores, label=pagina["URL"])
-                ax.fill(angles, scores, alpha=0.1)
-            ax.set_theta_offset(np.pi / 2)
-            ax.set_theta_direction(-1)
-            ax.set_thetagrids(np.degrees(angles[:-1]), labels)
-            ax.set_ylim(0, 1)
-            plt.legend(loc="upper right", bbox_to_anchor=(1.3, 1.1))
-            st.pyplot(fig)
+            analyseer_pagina(keyword, url)
