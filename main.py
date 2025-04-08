@@ -149,6 +149,21 @@ def analyseer_pagina(keyword, url):
         resultaat["Titel"] = f"Fout: {e}"
     return resultaat
 
+def verzamel_interne_links(start_url, keyword=None, max_links=15):
+    relevante_keywords = ["schatting", "verkopen", "diensten", "appartement", "waardebepaling"]
+    try:
+        response = requests.get(start_url, timeout=10)
+        soup = BeautifulSoup(response.text, "html.parser")
+        base = f"{urlparse(start_url).scheme}://{urlparse(start_url).netloc}"
+        links = set()
+        for a in soup.find_all("a", href=True):
+            full_url = urljoin(base, a['href'])
+            if base in full_url and any(k in full_url.lower() for k in relevante_keywords):
+                links.add(full_url)
+        return list(links)[:max_links]
+    except:
+        return [start_url]
+
 def get_cached_tekst(url, force_refresh=False):
     hash_id = hashlib.sha256(url.encode()).hexdigest()
     path = os.path.join(CACHE_DIR, f"{hash_id}_tekst.json")
@@ -183,6 +198,7 @@ Analyseer onderstaande webtekst rond de zoekvraag: '{zoekvraag}'.
 """
     return cache_antwoord(prompt, tekst, modeltype="pro")
 
+# Interface
 keuze = st.sidebar.radio(decode_unicode("📍 Kies een module"), [
     decode_unicode("🔍 AI-rank Monitor"),
     decode_unicode("🏑 SEO Concurrentievergelijker"),
